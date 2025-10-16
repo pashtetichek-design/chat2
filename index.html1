@@ -1,0 +1,540 @@
+<!-- ========== ЧАТ-БОТ ДЛЯ ОТЕЛЯ ЖИВОТНЫХ ========== -->
+<div id="pet-chat-widget"></div>
+
+<script>
+(function() {
+  'use strict';
+  
+  // ============ НАСТРОЙКИ ============
+  const CONFIG = {
+    apiUrl: 'http://localhost:8000/api/pet-hotel-chat', // Замените на ваш URL после деплоя
+    botName: 'Консультант отеля',
+    botIcon: '🐾',
+    welcomeMessage: 'Здравствуйте! 🐶 Я помогу вам с размещением питомца. Расскажите, какое животное вы хотите разместить?',
+    placeholderText: 'Напишите ваш вопрос...',
+    errorMessage: 'Извините, произошла ошибка. Попробуйте позже или позвоните: +7 (XXX) XXX-XX-XX',
+    position: 'right' // 'right' или 'left'
+  };
+
+  // ============ СТИЛИ ============
+  const styles = `
+    <style>
+      /* Контейнер виджета */
+      #pet-chat-container {
+        position: fixed;
+        bottom: 20px;
+        ${CONFIG.position}: 20px;
+        z-index: 999999;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+      }
+
+      /* Кнопка открытия чата */
+      #pet-chat-button {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative;
+      }
+
+      #pet-chat-button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+      }
+
+      #pet-chat-button:active {
+        transform: scale(0.95);
+      }
+
+      /* Индикатор непрочитанных */
+      #pet-chat-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #ff4757;
+        color: white;
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        font-size: 12px;
+        font-weight: bold;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid white;
+      }
+
+      #pet-chat-badge.show {
+        display: flex;
+      }
+
+      /* Окно чата */
+      #pet-chat-window {
+        position: fixed;
+        bottom: 100px;
+        ${CONFIG.position}: 20px;
+        width: 400px;
+        max-width: calc(100vw - 40px);
+        height: 600px;
+        max-height: calc(100vh - 140px);
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+        animation: slideUp 0.3s ease-out;
+      }
+
+      #pet-chat-window.open {
+        display: flex;
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Шапка чата */
+      #pet-chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      #pet-chat-header-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        font-size: 16px;
+      }
+
+      #pet-chat-header-icon {
+        font-size: 24px;
+      }
+
+      #pet-chat-close {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+        padding: 0;
+        line-height: 1;
+      }
+
+      #pet-chat-close:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      /* Область сообщений */
+      #pet-chat-messages {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: #f8f9fa;
+        scroll-behavior: smooth;
+      }
+
+      #pet-chat-messages::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      #pet-chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      #pet-chat-messages::-webkit-scrollbar-thumb {
+        background: #cbd5e0;
+        border-radius: 3px;
+      }
+
+      /* Сообщения */
+      .pet-chat-message {
+        margin-bottom: 16px;
+        display: flex;
+        animation: fadeIn 0.3s ease-out;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .pet-chat-message.user {
+        justify-content: flex-end;
+      }
+
+      .pet-chat-message.bot {
+        justify-content: flex-start;
+      }
+
+      .pet-chat-bubble {
+        max-width: 75%;
+        padding: 12px 16px;
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 15px;
+        word-wrap: break-word;
+      }
+
+      .user .pet-chat-bubble {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 18px 18px 4px 18px;
+      }
+
+      .bot .pet-chat-bubble {
+        background: white;
+        color: #2d3748;
+        border-radius: 18px 18px 18px 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      /* Индикатор печатания */
+      .pet-chat-typing {
+        display: flex;
+        gap: 5px;
+        padding: 12px 16px;
+        background: white;
+        border-radius: 18px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        width: fit-content;
+      }
+
+      .pet-chat-typing span {
+        width: 8px;
+        height: 8px;
+        background: #cbd5e0;
+        border-radius: 50%;
+        animation: typing 1.4s infinite ease-in-out;
+      }
+
+      .pet-chat-typing span:nth-child(1) {
+        animation-delay: 0s;
+      }
+
+      .pet-chat-typing span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .pet-chat-typing span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes typing {
+        0%, 60%, 100% {
+          transform: translateY(0);
+          opacity: 0.7;
+        }
+        30% {
+          transform: translateY(-10px);
+          opacity: 1;
+        }
+      }
+
+      /* Область ввода */
+      #pet-chat-input-area {
+        padding: 16px 20px;
+        background: white;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      #pet-chat-input {
+        flex: 1;
+        padding: 12px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 24px;
+        outline: none;
+        font-size: 15px;
+        font-family: inherit;
+        transition: border-color 0.2s;
+        resize: none;
+        max-height: 120px;
+        min-height: 44px;
+      }
+
+      #pet-chat-input:focus {
+        border-color: #667eea;
+      }
+
+      #pet-chat-send {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        transition: transform 0.2s, opacity 0.2s;
+        flex-shrink: 0;
+      }
+
+      #pet-chat-send:hover:not(:disabled) {
+        transform: scale(1.05);
+      }
+
+      #pet-chat-send:active:not(:disabled) {
+        transform: scale(0.95);
+      }
+
+      #pet-chat-send:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Мобильная адаптация */
+      @media (max-width: 480px) {
+        #pet-chat-window {
+          width: 100vw;
+          height: 100vh;
+          max-height: 100vh;
+          bottom: 0;
+          ${CONFIG.position}: 0;
+          border-radius: 0;
+        }
+
+        #pet-chat-button {
+          width: 56px;
+          height: 56px;
+          font-size: 28px;
+        }
+      }
+    </style>
+  `;
+
+  // ============ HTML СТРУКТУРА ============
+  const html = `
+    ${styles}
+    <div id="pet-chat-container">
+      <button id="pet-chat-button" aria-label="Открыть чат">
+        ${CONFIG.botIcon}
+        <span id="pet-chat-badge">1</span>
+      </button>
+      
+      <div id="pet-chat-window">
+        <div id="pet-chat-header">
+          <div id="pet-chat-header-title">
+            <span id="pet-chat-header-icon">${CONFIG.botIcon}</span>
+            <span>${CONFIG.botName}</span>
+          </div>
+          <button id="pet-chat-close" aria-label="Закрыть чат">×</button>
+        </div>
+        
+        <div id="pet-chat-messages"></div>
+        
+        <div id="pet-chat-input-area">
+          <textarea 
+            id="pet-chat-input" 
+            placeholder="${CONFIG.placeholderText}"
+            rows="1"
+          ></textarea>
+          <button id="pet-chat-send" aria-label="Отправить">➤</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // ============ ИНИЦИАЛИЗАЦИЯ ============
+  const container = document.getElementById('pet-chat-widget');
+  container.innerHTML = html;
+
+  // Элементы
+  const chatButton = document.getElementById('pet-chat-button');
+  const chatWindow = document.getElementById('pet-chat-window');
+  const chatClose = document.getElementById('pet-chat-close');
+  const chatMessages = document.getElementById('pet-chat-messages');
+  const chatInput = document.getElementById('pet-chat-input');
+  const chatSend = document.getElementById('pet-chat-send');
+  const chatBadge = document.getElementById('pet-chat-badge');
+
+  // Состояние
+  let sessionId = localStorage.getItem('petChatSessionId') || null;
+  let isOpen = false;
+  let messageCount = 0;
+
+  // ============ ФУНКЦИИ ============
+
+  // Добавить сообщение
+  function addMessage(role, text) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `pet-chat-message ${role}`;
+    
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'pet-chat-bubble';
+    bubbleDiv.textContent = text;
+    
+    messageDiv.appendChild(bubbleDiv);
+    chatMessages.appendChild(messageDiv);
+    
+    // Прокрутка вниз
+    setTimeout(() => {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 100);
+
+    // Показать badge если чат закрыт
+    if (!isOpen && role === 'bot') {
+      messageCount++;
+      chatBadge.textContent = messageCount;
+      chatBadge.classList.add('show');
+    }
+  }
+
+  // Показать индикатор печатания
+  function showTyping() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'pet-chat-message bot';
+    typingDiv.id = 'pet-chat-typing-indicator';
+    typingDiv.innerHTML = `
+      <div class="pet-chat-typing">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    `;
+    chatMessages.appendChild(typingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // Скрыть индикатор печатания
+  function hideTyping() {
+    const typingIndicator = document.getElementById('pet-chat-typing-indicator');
+    if (typingIndicator) {
+      typingIndicator.remove();
+    }
+  }
+
+  // Отправить сообщение
+  async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    // Добавить сообщение пользователя
+    addMessage('user', text);
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    chatSend.disabled = true;
+
+    // Показать индикатор печатания
+    showTyping();
+
+    try {
+      const response = await fetch(CONFIG.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: text,
+          sessionId: sessionId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Network error');
+      }
+
+      const data = await response.json();
+      
+      // Сохранить session ID
+      if (data.sessionId) {
+        sessionId = data.sessionId;
+        localStorage.setItem('petChatSessionId', sessionId);
+      }
+
+      // Скрыть индикатор и показать ответ
+      hideTyping();
+      addMessage('bot', data.reply || CONFIG.errorMessage);
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      hideTyping();
+      addMessage('bot', CONFIG.errorMessage);
+    } finally {
+      chatSend.disabled = false;
+      chatInput.focus();
+    }
+  }
+
+  // Открыть чат
+  function openChat() {
+    isOpen = true;
+    chatWindow.classList.add('open');
+    chatInput.focus();
+    messageCount = 0;
+    chatBadge.classList.remove('show');
+  }
+
+  // Закрыть чат
+  function closeChat() {
+    isOpen = false;
+    chatWindow.classList.remove('open');
+  }
+
+  // Автоматическое изменение высоты textarea
+  function autoResize() {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  }
+
+  // ============ СОБЫТИЯ ============
+  chatButton.addEventListener('click', openChat);
+  chatClose.addEventListener('click', closeChat);
+  chatSend.addEventListener('click', sendMessage);
+  
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  chatInput.addEventListener('input', autoResize);
+
+  // ============ ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ ============
+  setTimeout(() => {
+    addMessage('bot', CONFIG.welcomeMessage);
+  }, 500);
+
+})();
+</script>
+<!-- ========== КОНЕЦ ЧАТА ========== -->
